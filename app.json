@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Admin",
+    "slug": "Admin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "admin",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      
+      
+      "package": "com.btw_its_owais0.Admin"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "expo-font",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "guardpassword": "user_37Dgj4J15IkhPo9v5nN6U6DgMCY",
+      "publishabekley": "EXPO_PUBLIC_SUPABASE_KEY=sb_publishable_vH91epvFaHLHOTKU6abgjQ_p6y7xX_E",
+      "EXPO_PUBLIC_SUPABASE_URL": "https://iykoqwuljgcyhskonlic.supabase.co",
+      "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_vH91epvFaHLHOTKU6abgjQ_p6y7xX_E",
+      "router": {},
+      "eas": {
+        "projectId": "361e9363-e30d-4915-b96c-91bd33d91dc7"
+      }
+    },
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

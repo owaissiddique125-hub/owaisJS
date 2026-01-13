@@ -1,24 +1,21 @@
 const express = require("express");
-const router = express.Router()
-const clerkAuth = require('../middleware/clerkAuth');
+const router = express.Router();
+const clerkAuth = require("../middleware/clerkAuth");
 const supabase = require("../supabase/supbase");
 
-router.get('/',clerkAuth, async (req,res)=>
-{
-try{
-  const {data ,error} = await supabase
-.from('orders')
-.select('*')
-.order('created_at',{ascending:false});
-if(error) throw error
+router.get("/", clerkAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
 
-res.json({ success: true, orders: data});
-
-}
-catch(err){
-  console.log("Eroor While fetching data",err);
-  res.status(500).json({success : false, message: "data fetching error"})
-}
+    res.json({ success: true, orders: data });
+  } catch (err) {
+    console.log("Eroor While fetching data", err);
+    res.status(500).json({ success: false, message: "data fetching error" });
+  }
 });
 router.patch("/:id", clerkAuth, async (req, res) => {
   try {
@@ -37,6 +34,5 @@ router.patch("/:id", clerkAuth, async (req, res) => {
     res.status(500).json({ success: false });
   }
 });
-
 
 module.exports = router;

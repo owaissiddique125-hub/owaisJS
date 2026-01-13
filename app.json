@@ -18,8 +18,6 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      
-      
       "package": "com.btw_its_owais0.Admin"
     },
     "web": {
@@ -41,21 +39,20 @@
         }
       ],
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "extra": {
       "guardpassword": "user_37Dgj4J15IkhPo9v5nN6U6DgMCY",
-      "publishabekley": "EXPO_PUBLIC_SUPABASE_KEY=sb_publishable_vH91epvFaHLHOTKU6abgjQ_p6y7xX_E",
       "EXPO_PUBLIC_SUPABASE_URL": "https://iykoqwuljgcyhskonlic.supabase.co",
       "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_vH91epvFaHLHOTKU6abgjQ_p6y7xX_E",
-      "router": {},
       "eas": {
         "projectId": "361e9363-e30d-4915-b96c-91bd33d91dc7"
       }
     },
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     }
   }
 }

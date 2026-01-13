@@ -1,22 +1,21 @@
-import { useUser, SignedIn, SignedOut } from "@clerk/clerk-expo";
+import { useUser } from "@clerk/clerk-expo";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  Alert,
+    ActivityIndicator,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
 import { useGoogleLogin } from "../src/utils/googleAuth";
 
 const LoginScreen = () => {
   const { isLoaded: isUserLoaded, user, isSignedIn } = useUser();
   const router = useRouter();
   const handleGoogleLogin = useGoogleLogin();
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState(null);
 
@@ -28,48 +27,63 @@ const LoginScreen = () => {
     }
   }, [isUserLoaded, isSignedIn, user, router]);
 
+  // Show loading while checking auth
+  if (!isUserLoaded) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4285F4" />
+          <Text style={styles.loadingText}>Checking authentication...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <SignedIn>
+      {/* Show login form if not signed in */}
+      {!isSignedIn ? (
+        <>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.title}>Admin Panel</Text>
+            <Text style={styles.subtitle}>Sign in with Google to continue</Text>
+          </View>
+
+          {/* Google Login Button */}
+          <TouchableOpacity
+            style={[
+              styles.googleButton,
+              isLoading &&
+                loadingProvider === "oauth_google" &&
+                styles.loginButtonDisabled,
+            ]}
+            onPress={() => handleGoogleLogin(setIsLoading, setLoadingProvider)}
+            disabled={isLoading}
+          >
+            {isLoading && loadingProvider === "oauth_google" ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <View style={styles.buttonContent}>
+                <Text style={styles.loginButtonText}>Continue with Google</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Instructions */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              Click the button above to sign in with your Google account
+            </Text>
+          </View>
+        </>
+      ) : (
         <View style={styles.userStatus}>
           <Text style={styles.userStatusText}>✅ Already signed in!</Text>
           <Text style={styles.userSubText}>Redirecting to admin panel...</Text>
           <ActivityIndicator size="small" color="#4CAF50" />
         </View>
-      </SignedIn>
-
-      <SignedOut>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Admin Panel</Text>
-          <Text style={styles.subtitle}>Sign in with Google to continue</Text>
-        </View>
-
-        {/* Google Login Button */}
-        <TouchableOpacity
-          style={[
-            styles.googleButton,
-            isLoading && loadingProvider === "oauth_google" && styles.loginButtonDisabled,
-          ]}
-          onPress={() => handleGoogleLogin(setIsLoading, setLoadingProvider)}
-          disabled={isLoading}
-        >
-          {isLoading && loadingProvider === "oauth_google" ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <View style={styles.buttonContent}>
-              <Text style={styles.loginButtonText}>Continue with Google</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* Instructions */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            Click the button above to sign in with your Google account
-          </Text>
-        </View>
-      </SignedOut>
+      )}
     </SafeAreaView>
   );
 };
@@ -78,6 +92,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
   },
   header: {
     marginBottom: 40,

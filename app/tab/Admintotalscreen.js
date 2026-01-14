@@ -9,7 +9,7 @@ const monthNames = [
   "july","august","september","october","november","december"
 ];
 
-const API_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL || "http://192.168.100.10:3000";
+const API_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL || "https://owais-js-wtoy.vercel.app";
  
 
 const AdminSalesScreen = () => {

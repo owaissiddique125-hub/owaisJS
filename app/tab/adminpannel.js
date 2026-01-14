@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import useAuth from "../../src/hooks/_useAuth";
 
-const API_URL = "http://192.168.100.10:3000"; // Your actual computer IP
+const API_URL = "https://owais-js-wtoy.vercel.app";; // Your actual computer IP
 
 const StylishInputs = () => {
   const { getToken, signOut, user, isLoaded, isSignedIn } = useAuth();

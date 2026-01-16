@@ -1,91 +1,84 @@
-// --- Save / Update Logic ---
-  const handleSaveItem = async () => {
-    // Validation: Edit ke waqt image zaroori nahi agar pehle se hai
-    if (!price || !category || !itemName) {
-      Alert.alert("Rukien!", "Name, Price aur Category zaroori hain.");
-      return;
+/**
+ * PUT /api/items/:id
+ * Update food item logic
+ */
+router.put('/:id', clerkAuth, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { Name, price, category, description, imageBase64, sizes, detailImagesBase64 } = req.body;
+
+    // 1. Check karein item exist karta hai
+    const { data: existingItem, error: fetchError } = await supabase
+      .from('items')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !existingItem) {
+      return res.status(404).json({ success: false, message: "Item nahi mila" });
     }
 
-    setIsUploading(true);
-    try {
-      const token = await getToken();
-      
-      const payload = {
-        Name: itemName,
-        price: price.toString(),
-        description: description || "",
-        category: category,
-        sizes: selectedSizes || [],
-      };
+    let updateData = {
+      name: Name,
+      price: parseFloat(price),
+      category: category,
+      description: description || null,
+      sizes: sizes || [],
+    };
 
-      // 1. Cover Image Logic
-      // Agar base64 hai toh naya upload karo, warna purana URL hi rehne do
-      if (image?.base64) {
-        payload.imageBase64 = `data:image/jpeg;base64,${image.base64}`;
-      } else if (image?.uri && editId) {
-        // Edit mode mein agar image change nahi ki, toh backend ko URL bhej sakte hain
-        // Ya backend khud hi handle kar lega agar imageBase64 empty ho
-        payload.currentImageUrl = image.uri; 
-      }
+    // 2. Agar Nayi Main Image aayi hai toh Cloudinary pe bhejo
+    if (imageBase64 && imageBase64.startsWith('data:image')) {
+      const cloudinaryResult = await cloudinary.uploader.upload(imageBase64, {
+        folder: 'food-items',
+        resource_type: 'image',
+      });
+      updateData.cover_image_url = cloudinaryResult.secure_url;
+    }
 
-      // 2. Detail Images Logic
-      const newDetails = detailImages.filter(img => img.base64);
-      if (newDetails.length > 0) {
-        payload.detailImagesBase64 = newDetails.map(img => `data:image/jpeg;base64,${img.base64}`);
-      }
-
-      const config = { 
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        } 
-      };
-
-      if (editId) {
-        console.log("Updating Item ID:", editId);
-        const res = await axios.put(`${API_URL}/api/items/${editId}`, payload, config);
-        if (res.data.success) Alert.alert("Item Has Been Updated");
-      } else {
-        // Naye item ke liye image lazmi hai
-        if (!image?.base64) {
-           Alert.alert("PLease select Image");
-           setIsUploading(false);
-           return;
+    // 3. Agar Nayi Detail Images aayi hain
+    if (Array.isArray(detailImagesBase64) && detailImagesBase64.length > 0) {
+      let detailImageUrls = [];
+      for (let img of detailImagesBase64) {
+        if (img.startsWith('data:image')) {
+          const result = await cloudinary.uploader.upload(img, {
+            folder: 'food-items/details',
+            resource_type: 'image',
+          });
+          detailImageUrls.push(result.secure_url);
         }
-        await axios.post(`${API_URL}/api/items`, payload, config);
-        Alert.alert("Success!", "Item ha been updated .");
       }
-
-      resetForm();
-      await fetchItems(); // List ko refresh karein
-    } catch (err) {
-      console.log("Error Response:", err.response?.data);
-      Alert.alert("Error", err.response?.data?.message || "Action failed.");
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const startEdit = (item) => {
-    setEditId(item.id || item._id);
-    setItemName(item.Name || item.name || "");
-    setPrice(item.price ? item.price.toString() : "");
-    setCategory(item.category || "");
-    setDescription(item.description || "");
-    setSelectedSizes(item.sizes || []);
-    
-    // Cover image preview set karein
-    if (item.imageUrl || item.image_url) {
-      setImage({ uri: item.imageUrl || item.image_url });
+      if (detailImageUrls.length > 0) {
+        updateData.detail_image_url = detailImageUrls;
+      }
     }
 
-    // Purani Detail images ko bhi preview mein dikhayen
-    if (item.detail_image_url && Array.isArray(item.detail_image_url)) {
-      const existingDetails = item.detail_image_url.map(url => ({ uri: url }));
-      setDetailImages(existingDetails);
-    } else {
-      setDetailImages([]);
-    }
+    // 4. Supabase mein data save karein
+    const { data: updatedItem, error: updateError } = await supabase
+      .from('items')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
 
-    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-  };
+    if (updateError) throw updateError;
+
+    // Response wese hi bhejo jese GET route bhejta hai
+    res.json({
+      success: true,
+      message: 'Item update ho gaya',
+      item: {
+        id: updatedItem.id,
+        name: updatedItem.name,
+        price: parseFloat(updatedItem.price),
+        category: updatedItem.category,
+        imageUrl: updatedItem.cover_image_url,
+        description: updatedItem.description,
+        detail_image_url: updatedItem.detail_image_url,
+        available: updatedItem.available
+      }
+    });
+  } catch (error) {
+    console.error('Update Error:', error);
+    next(error);
+  }
+});

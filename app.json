@@ -9,8 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.btw_its_owais0.Admin"
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
@@ -46,8 +45,7 @@
     "extra": {
       "guardpassword": "user_37Dgj4J15IkhPo9v5nN6U6DgMCY",
       "EXPO_PUBLIC_SUPABASE_URL": "https://iykoqwuljgcyhskonlic.supabase.co",
-      "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_vH91epvFaHLHOTKU6abgjQ_p6y7xX_E",
-      "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "YOUR_CLOUD_NAME",
+      "EXPO_PUBLIC_SUPABASE_KEY": "sb_publishable_vH91epvFaHLHOTKU6abgjQ_p6y7xX_E",
       "eas": {
         "projectId": "361e9363-e30d-4915-b96c-91bd33d91dc7"
       }

@@ -5,69 +5,67 @@ const supabase = require("../supabase/supbase");
 
 router.get("/", clerkAuth, async (req, res) => {
   try {
-    // 1. Inputs ko parse aur validate karein
     let { page = 1, limit = 15, year, month } = req.query;
-    page = Math.max(1, parseInt(page)); // Kam se kam page 1 ho
+    page = parseInt(page);
     limit = parseInt(limit);
 
-    // 2. Base Queries banayein
-    // Count exact: True taake pagination ko pata ho total kitne pages hain
+    // 1. Base Queries
+    // Main query: Saara data fetch karne ke liye (Paginated)
     let query = supabase.from("orders").select("*", { count: "exact" });
     
-    // Database level aggregation: Bohot fast aur memory-efficient
-    let revenueQuery = supabase.from("orders").select("total.sum()");
+    // Revenue query: Sirf 'total' column mangwa rahe hain (Error fix karne ke liye)
+    let revenueQuery = supabase.from("orders").select("total");
 
-    // 3. Filter Logic (Timezone safe dates)
+    // 2. Filter Logic (Timezone safe dates)
     if (year && year !== 'undefined' && year !== 'all') {
       let startDate, endDate;
 
       if (month && month !== 'undefined') {
-        // Mahine ka filter: UTC format use karna best hai servers ke liye
-        // new Date(year, month, 0) khud hi 28/30/31 din handle kar leta hai
+        // Specific Month Filter
         startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)).toISOString();
         endDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)).toISOString();
       } else {
-        // Pure saal ka filter
+        // Full Year Filter
         startDate = new Date(Date.UTC(year, 0, 1, 0, 0, 0)).toISOString();
         endDate = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999)).toISOString();
       }
 
-      // Dono queries par filters apply karein
       query = query.gte("created_at", startDate).lte("created_at", endDate);
       revenueQuery = revenueQuery.gte("created_at", startDate).lte("created_at", endDate);
     }
 
-    // 4. Execution (Parallel fetching taake response jaldi jaye)
-    // .single() ki jagah hum direct result handle karenge taake 0 rows par crash na ho
-    const [ordersRes, revenueRes] = await Promise.all([
+    // 3. Execution (Donon queries ko ek sath chalana)
+    const [ordersRes, allTotalsRes] = await Promise.all([
       query
         .order("created_at", { ascending: false })
-        .range((page - 1) * limit, page * limit - 1),
+        .range((page - 1) * limit, (page * limit) - 1),
       revenueQuery
     ]);
 
-    // Error checking
+    // Error check
     if (ordersRes.error) throw ordersRes.error;
-    if (revenueRes.error) throw revenueRes.error;
+    if (allTotalsRes.error) throw allTotalsRes.error;
 
-    // 5. Response bhejein
-    // revenueRes.data[0].sum Supabase ka standard response format hai aggregation ke liye
-    const totalRevenueSum = revenueRes.data?.[0]?.sum || 0;
+    // 4. Server-Side Revenue Calculation (Sabse Safe Tareeka)
+    // Ye line aapka "Aggregate function" wala error fix karegi
+    const totalRevenue = allTotalsRes.data 
+      ? allTotalsRes.data.reduce((sum, item) => sum + (Number(item.total) || 0), 0)
+      : 0;
 
+    // 5. Final Response
     res.json({
       success: true,
       orders: ordersRes.data || [],
-      totalCount: ordersRes.count || 0, // Database mein total kitne hain
-      totalRevenue: totalRevenueSum,    // Database se calculated sum
-      currentPage: page,
-      limit: limit
+      totalCount: ordersRes.count || 0,
+      totalRevenue: totalRevenue, 
+      currentPage: page
     });
 
   } catch (err) {
     console.error("Sales Route Error:", err.message);
     res.status(500).json({ 
       success: false, 
-      message: "Server Error: Sales data fetch nahi ho saka",
+      message: "Server Error: Data fetch nahi ho saka",
       error: err.message 
     });
   }

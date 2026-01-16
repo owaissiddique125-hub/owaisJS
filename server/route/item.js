@@ -1,307 +1,63 @@
- 
- const express = require('express');
- const router = express.Router();
- const { body, validationResult } = require('express-validator');
- const clerkAuth = require('../middleware/clerkAuth');
- const supabase = require("../supabase/supbase");
- const multer = require('multer');
- const cloudinary = require('cloudinary').v2;
- 
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// Configure multer for memory storage
-const upload = multer({ 
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
-  },
-});
-
 /**
- * GET /api/items/admin/all
- * Get all food items for admin (includes unavailable items)
+ * PUT /api/items/:id
+ * Update food item (Admin only)
  */
-router.get('/admin/all', clerkAuth, async (req, res, next) => {
+router.put('/:id', clerkAuth, async (req, res, next) => {
   try {
-    const { data: items, error } = await supabase
-      .from('items')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { id } = req.params;
+    const { Name, price, category, description, imageBase64, sizes, detailImagesBase64 } = req.body;
 
-    if (error) throw error;
+    // 1. Pehle purana data lao taake purani images ka pata chale
+    const { data: existingItem } = await supabase.from('items').select('*').eq('id', id).single();
+    if (!existingItem) return res.status(404).json({ success: false, message: "Item not found" });
 
-    res.json({
-      success: true,
-      items: items.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: parseFloat(item.price),
-        category: item.category,
-        imageUrl: item.cover_image_url,
-        description: item.description,
-        available: item.available,
-        createdAt: item.created_at,
-        detail_image_url: item.detail_image_url, 
-      })),
-      count: items.length
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+    let updateData = {
+      name: Name,
+      price: parseFloat(price),
+      category: category,
+      description: description || null,
+      sizes: sizes,
+    };
 
-/**
- * GET /api/items
- * Get all food items for admin (includes unavailable items)
- */
-router.get('/', clerkAuth, async (req, res, next) => {
-  try {
-    const { data: items, error } = await supabase
-      .from('items')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    res.json({
-      success: true,
-      items: items.map(item => ({
-        id: item.id,
-        name: item.name,
-        price: parseFloat(item.price),
-        category: item.category,
-        imageUrl: item.cover_image_url,
-        description: item.description,
-        available: item.available,
-        createdAt: item.created_at,
-        detail_image_url: item.detail_image_url, 
-      })),
-      count: items.length
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * POST /api/items
- * Add new food item (Admin only) - accepts base64 image
- */
-router.post('/',
-  clerkAuth,
-  [
-    body('Name').trim().notEmpty().withMessage('Item name is required'),
-    body('price')
-      .trim()
-      .notEmpty().withMessage('Price is required')
-      .isNumeric().withMessage('Price must be a number')
-      .custom(value => parseFloat(value) >= 0).withMessage('Price must be positive'),
-    body('category').trim().notEmpty().withMessage('Category is required'),
-    body('imageBase64').notEmpty().withMessage('Image is required'),
-  ],
-  async (req, res, next) => {
-    try {
-      console.log('📦 Received item data:', {
-        Name: req.body.Name,
-        price: req.body.price,
-        category: req.body.category,
-        hasImage: !!req.body.imageBase64,
-        sizes: req.body.sizes,
-
-      });
-      
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        console.log('❌ Validation errors:', errors.array());
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: 'Validation failed',
-            details: errors.array()
-          }
-        });
-      }
-
-      const { Name, price, category, description, imageBase64,sizes, detailImagesBase64} = req.body;
-
-      console.log('📤 Uploading to Cloudinary...');
-      
-      // Upload base64 image to Cloudinary
+    // 2. Agar Nayi Cover Image bheji hai toh Cloudinary pe upload karo
+    if (imageBase64 && imageBase64.startsWith('data:image')) {
       const cloudinaryResult = await cloudinary.uploader.upload(imageBase64, {
         folder: 'food-items',
         resource_type: 'image',
       });
+      updateData.cover_image_url = cloudinaryResult.secure_url;
+    }
 
-      // detail images
+    // 3. Agar Nayi Detail Images bheji hain toh upload karo
+    if (Array.isArray(detailImagesBase64) && detailImagesBase64.length > 0) {
       let detailImageUrls = [];
-    if (Array.isArray(detailImagesBase64)) {
-     for (let img of detailImagesBase64) {
-       const result = await cloudinary.uploader.upload(img, {
-        folder: 'food-items/details',
-        resource_type: 'image',
-       });
-        detailImageUrls.push(result.secure_url);
+      for (let img of detailImagesBase64) {
+        if (img.startsWith('data:image')) {
+          const result = await cloudinary.uploader.upload(img, {
+            folder: 'food-items/details',
+            resource_type: 'image',
+          });
+          detailImageUrls.push(result.secure_url);
+        }
       }
-}     
-
-
-      console.log('✅ Cloudinary upload success:', cloudinaryResult.secure_url);
-      const imageUrl = cloudinaryResult.secure_url;
-
-      console.log('💾 Saving to Supabase...');
-      
-      // Insert into Supabase
-      const { data: item, error } = await supabase
-        .from('items')
-        .insert({
-          name: Name,
-          price: parseFloat(price),
-          category: category,
-          cover_image_url: imageUrl, 
-          description: description || null,
-          available: true,
-          sizes: sizes,
-          detail_image_url: detailImageUrls
-
-
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.log('❌ Supabase error:', error);
-        throw error;
+      if (detailImageUrls.length > 0) {
+        updateData.detail_image_url = detailImageUrls;
       }
-      
-      console.log('✅ Item saved successfully:', item.id);
-
-      res.status(201).json({
-        success: true,
-        message: 'Item added successfully',
-        item: {
-          id: item.id,
-          name: item.name,
-          price: parseFloat(item.price),
-          category: item.category,
-          imageUrl: item.cover_image_url,
-          description: item.description,
-          available: item.available,
-          createdAt: item.created_at,
-          detail_image_url:item.detailImageUrls,
-        }
-      });
-    } catch (error) {
-      console.error('Error adding item:', error);
-      next(error);
-    }
-  }
-);
-
-/**
- * DELETE /api/items/:id
- * Delete food item (Admin only)
- */
-router.delete('/:id', clerkAuth, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    console.log('🗑️ DELETE route matched!');
-    console.log('🗑️ Item ID to delete:', id);
-
-    // Validate ID
-    if (!id || id === 'admin' || id === 'undefined' || id === '') {
-      console.log('❌ Invalid ID provided:', id);
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'INVALID_ID',
-          message: 'Invalid item ID provided'
-        }
-      });
     }
 
-    // Delete the item from Supabase database
-    console.log('🗑️ Attempting to delete from Supabase...');
-    const { error: deleteError } = await supabase
-      .from('items')
-      .delete()
-      .eq('id', id);
-
-    console.log('🗑️ Delete error:', deleteError);
-
-    if (deleteError) {
-      console.log('❌ Supabase delete error:', deleteError);
-      return res.status(500).json({
-        success: false,
-        error: {
-          code: 'DELETE_FAILED',
-          message: 'Failed to delete item from database',
-          details: deleteError.message
-        }
-      });
-    }
-
-    console.log('✅ Item PERMANENTLY deleted from Supabase - ID:', id);
-    res.json({
-      success: true,
-      message: 'Item deleted permanently from database',
-      id: id
-    });
-  } catch (error) {
-    console.error('❌ Error deleting item:', error.message);
-    next(error);
-  }
-});
-
-/**
- * GET /api/items/:id
- * Get specific food item by ID
- */
-router.get('/:id', clerkAuth, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
+    // 4. Supabase mein update karo
     const { data: item, error } = await supabase
       .from('items')
-      .select('*')
+      .update(updateData)
       .eq('id', id)
+      .select()
       .single();
-
-    if (error && error.code === 'PGRST116') {
-      return res.status(404).json({
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Item not found'
-        }
-      });
-    }
 
     if (error) throw error;
 
-    res.json({
-      success: true,
-      item: {
-        id: item.id,
-        name: item.name,
-        price: parseFloat(item.price),
-        category: item.category,
-       imageUrl: item.cover_image_url, 
-        description: item.description,
-        detail_image_url:item.detailImageUrls||item.detail_image_url,
-        available: item.available,
-        createdAt: item.created_at
-      }
-    });
+    res.json({ success: true, message: 'Item updated successfully', item });
   } catch (error) {
+    console.error('Update Error:', error);
     next(error);
   }
 });
-
-module.exports = router;

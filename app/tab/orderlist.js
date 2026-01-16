@@ -1,20 +1,21 @@
 import { useAuth as useClerkAuth } from "@clerk/clerk-expo";
 import axios from "axios";
 import Constants from "expo-constants";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   FlatList,
   Linking,
+  RefreshControl,
   StyleSheet,
-  Text,
+  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
+import { Calendar } from "react-native-calendars";
+import { Avatar, Button, Card, SegmentedButtons, Surface, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
-const API_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL || "https://owais-js-wtoy.vercel.app";
- 
 
-
+const API_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || "https://owais-js-wtoy.vercel.app";
 
 const STATUS_COLORS = {
   pending: "#FFA500",
@@ -22,244 +23,217 @@ const STATUS_COLORS = {
   delivered: "#28A745",
 };
 
-
 const AdminOrdersScreen = () => {
-const { getToken } = useClerkAuth();
+  const { getToken } = useClerkAuth();
   
   const [orders, setOrders] = useState([]);
-  
-  const fetchOrders = async () =>{
-  try{
-  const token = await getToken();
- const response = await axios.get(`${API_URL}/api/orders`,{
+  const [filteredOrders, setFilteredOrders] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [filterMode, setFilterMode] = useState('day'); 
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [showCalendar, setShowCalendar] = useState(false);
 
-  headers:{
-        Authorization: `Bearer ${token}`,
-  }
- })
- if( response.data.success){
-  setOrders(response.data.orders)
- }
-else{
-  alert("frontend error")
-}} catch(Eroor)
-{
-console.log("this is the Error ",Eroor)
-}
-} 
+  const fetchOrders = async () => {
+    if (!refreshing) setLoading(true);
+    try {
+      const token = await getToken();
+      const [year, month, day] = selectedDate.split('-');
+      
+      const response = await axios.get(`${API_URL}/api/orders`, {
+        params: { mode: filterMode, year, month, day, limit: 100 },
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
-const updateStatus = async (orderId, newStatus) => {
-  try {
-    const token = await getToken();
-    const { data } = await axios.patch(`${API_URL}/api/orders/${orderId}`, {
-      status: newStatus,
-    },{
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (data.success) {
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id.toString() === orderId.toString() ? { ...o, status: newStatus } : o
-        )
-      );
-    } else {
-      alert("Update failed");
+      if (response.data.success) {
+        setOrders(response.data.orders);
+        applySearch(searchQuery, response.data.orders);
+      }
+    } catch (error) {
+      console.log("Fetch Error:", error.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  } catch (error) {
-    console.log("Update error:", error.message);
-  }
-};
-useEffect(() => {
-  let isMounted = true; // cleanup flag
-
-  const fetchInterval = async () => {
-    if (!isMounted) return;
-    await fetchOrders();
   };
 
-  fetchInterval(); // first call on mount
-
-  const interval = setInterval(fetchInterval, 5000);
-
-  return () => {
-    isMounted = false;
-    clearInterval(interval);
+  const applySearch = (query, allOrders = orders) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setFilteredOrders(allOrders);
+      return;
+    }
+    const lowerQuery = query.toLowerCase();
+    const filtered = allOrders.filter(order => {
+      const fName = String(order.first_name || "").toLowerCase();
+      const lName = String(order.last_name || "").toLowerCase();
+      const phone = String(order.PhoneNumber || "").toLowerCase();
+      const oId = String(order.id || "").toLowerCase();
+      return fName.includes(lowerQuery) || lName.includes(lowerQuery) || phone.includes(lowerQuery) || oId.includes(lowerQuery);
+    });
+    setFilteredOrders(filtered);
   };
-}, []);
+
+  const updateStatus = async (orderId, newStatus) => {
+    try {
+      const token = await getToken();
+      const { data } = await axios.patch(`${API_URL}/api/orders/${orderId}`, { status: newStatus }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (data.success) {
+        const updated = orders.map((o) => o.id === orderId ? { ...o, status: newStatus } : o);
+        setOrders(updated);
+        applySearch(searchQuery, updated);
+      }
+    } catch (error) {
+      alert("Status update failed");
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 30000);
+    return () => clearInterval(interval);
+  }, [filterMode, selectedDate]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchOrders();
+  }, [filterMode, selectedDate]);
 
   const renderOrderItem = ({ item }) => (
-    <View style={styles.card}>
-      {/* Header */}
+    <Surface style={styles.card} elevation={2}>
       <View style={styles.rowBetween}>
-        <Text style={styles.name}>
-          👤 {item.first_name} {item.last_name}
-        </Text>
-        <Text style={styles.phone}>📞 {item.PhoneNumber}</Text>
-      </View>
-
-      {/* Address */}
-      <Text style={styles.address}>
-        📍 {item.street}, {item.city} (Zip: {item.zip})
-      </Text>
-
-      {/* Items */}
-      <View style={{ marginVertical: 8 }}>
-        <Text style={styles.bold}>🛒 Items:</Text>
-       {Array.isArray(item.items) &&
-  item.items.map((i, index) => (
-    <Text key={index} style={styles.itemText}>
-      • {i.Name}
-      {i.size ? ` (${i.size})` : ""} 
-      x {i.quantity} = Rs {i.price * i.quantity}
-    </Text>
-))}
-      </View>
-
-      {/* Total & Status */}
-      <View style={styles.rowBetween}>
-        <Text style={styles.total}>💰 Rs {item.total}</Text>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: STATUS_COLORS[item.status] || "#888" },
-          ]}
-        >
-          <Text style={styles.statusText}>
-            {item.status.toUpperCase()}
-          </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>👤 {item.first_name} {item.last_name}</Text>
+          <Text style={styles.phone}>📞 {item.PhoneNumber || 'No Phone'}</Text>
+          <Text style={styles.orderIdText}>ID: #{item.id.toString().slice(-6).toUpperCase()}</Text>
+        </View>
+        <View style={[styles.badge, { backgroundColor: STATUS_COLORS[item.status] || "#888" }]}>
+          <Text style={styles.badgeText}>{item.status?.toUpperCase() || 'PENDING'}</Text>
         </View>
       </View>
-
-      {/* Map */}
+      <Text style={styles.address}>📍 {item.street}, {item.city}</Text>
+      <View style={styles.divider} />
+      <Text style={styles.bold}>🛒 Items:</Text>
+      {item.items?.map((i, idx) => (
+        <Text key={idx} style={styles.itemText}>• {i.Name} x{i.quantity} (Rs {i.price})</Text>
+      ))}
+      <View style={styles.footer}>
+        <Text style={styles.total}>Rs {Number(item.total).toLocaleString()}</Text>
+        <View style={styles.actions}>
+          {item.status === "pending" && (
+            <Button mode="contained" buttonColor="#1E90FF" compact onPress={() => updateStatus(item.id, "accepted")}>Accept</Button>
+          )}
+          {item.status === "accepted" && (
+            <Button mode="contained" buttonColor="#28A745" compact onPress={() => updateStatus(item.id, "delivered")}>Deliver</Button>
+          )}
+        </View>
+      </View>
       {item.maps_link && (
-        <TouchableOpacity
-          onPress={() => Linking.openURL(item.maps_link)}
-          style={styles.mapBtn}
-        >
-          <Text style={styles.mapText}>📍 Open Location</Text>
+        <TouchableOpacity onPress={() => Linking.openURL(item.maps_link)} style={styles.mapBtn}>
+          <Text style={styles.mapText}>View Location</Text>
         </TouchableOpacity>
       )}
-
-      {/* Actions */}
-      <View style={styles.actions}>
-        {item.status === "pending" && (
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: "#FFA500" }]}
-            onPress={() => updateStatus(item.id, "accepted")}
-          >
-            <Text style={styles.btnText}>Accept</Text>
-          </TouchableOpacity>
-        )}
-        {item.status === "accepted" && (
-          <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: "#28A745" }]}
-            onPress={() => updateStatus(item.id, "delivered")}
-          >
-            <Text style={styles.btnText}>Delivered</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
+    </Surface>
   );
 
   return (
-    <SafeAreaView style={styles.container}edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Search aur Filters ab upar hain, FlatList se bahar */}
+      <View style={styles.fixedHeader}>
+        <Text style={styles.title}>Orders Manager</Text>
+        <Surface style={styles.searchContainer} elevation={2}>
+          <Avatar.Icon size={30} icon="magnify" backgroundColor="transparent" color="#666" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search name, phone or ID..."
+            value={searchQuery}
+            onChangeText={(text) => applySearch(text)}
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => applySearch("")}>
+              <Avatar.Icon size={30} icon="close-circle" backgroundColor="transparent" color="#999" />
+            </TouchableOpacity>
+          )}
+        </Surface>
+        
+        <SegmentedButtons
+          value={filterMode}
+          onValueChange={setFilterMode}
+          buttons={[
+            { value: 'all', label: 'All' },
+            { value: 'day', label: 'Day' },
+            { value: 'month', label: 'Month' },
+            { value: 'year', label: 'Year' },
+          ]}
+          style={styles.segment}
+        />
+
+        {filterMode !== 'all' && (
+          <Button 
+            mode="contained-tonal" 
+            onPress={() => setShowCalendar(!showCalendar)}
+            icon="calendar"
+            style={styles.calBtn}
+          >
+            {selectedDate}
+          </Button>
+        )}
+      </View>
+
+      {showCalendar && (
+        <Card style={styles.calendarCard}>
+          <Calendar
+            onDayPress={(day) => {
+              setSelectedDate(day.dateString);
+              setShowCalendar(false);
+            }}
+            markedDates={{ [selectedDate]: { selected: true, selectedColor: '#6200ee' } }}
+          />
+        </Card>
+      )}
+
       <FlatList
-        data={orders}
+        data={filteredOrders}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderOrderItem}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        ListHeaderComponent={
-          <Text style={styles.title}>Admin Orders Dashboard</Text>
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        ListEmptyComponent={!loading && <Text style={styles.empty}>No orders found.</Text>}
+        contentContainerStyle={{ paddingBottom: 50 }}
       />
     </SafeAreaView>
   );
 };
 
-export default AdminOrdersScreen;
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F7F7F7",
-    paddingHorizontal: 10,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "bold",
-    marginVertical: 15,
-    color: "#333",
-  },
-  card: {
-    backgroundColor: "#fff",
-    marginBottom: 12,
-    padding: 18,
-    borderRadius: 15,
-    elevation: 5,
-  },
-  rowBetween: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  name: {
-    fontWeight: "bold",
-    fontSize: 18,
-  },
-  phone: {
-    color: "#555",
-    fontSize: 14,
-  },
-  address: {
-    color: "#555",
-    marginVertical: 6,
-  },
-  bold: {
-    fontWeight: "bold",
-  },
-  itemText: {
-    color: "#333",
-    fontSize: 14,
-  },
-  total: {
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  statusText: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
-  mapBtn: {
-    marginTop: 8,
-    padding: 10,
-    backgroundColor: "#E8F0FE",
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  mapText: {
-    color: "#1A73E8",
-    fontWeight: "bold",
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 10,
-  },
-  actionBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-    marginLeft: 10,
-  },
-  btnText: {
-    color: "white",
-    fontWeight: "bold",
-  },
+  container: { flex: 1, backgroundColor: "#f8f9fa" },
+  fixedHeader: { padding: 16, backgroundColor: "#f8f9fa" },
+  title: { fontSize: 22, fontWeight: "bold", marginBottom: 15 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 8, marginBottom: 15, height: 48 },
+  searchInput: { flex: 1, fontSize: 14, marginLeft: 5 },
+  segment: { marginBottom: 10 },
+  calBtn: { marginBottom: 5, borderRadius: 10 },
+  calendarCard: { marginHorizontal: 16, marginBottom: 15, borderRadius: 15, overflow: 'hidden' },
+  card: { backgroundColor: "#fff", marginHorizontal: 16, marginBottom: 12, padding: 16, borderRadius: 16 },
+  rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: 'flex-start' },
+  name: { fontWeight: "bold", fontSize: 16 },
+  phone: { color: "#666", fontSize: 13, marginTop: 2 },
+  orderIdText: { fontSize: 10, color: '#999', marginTop: 2 },
+  address: { color: "#444", marginVertical: 8, fontSize: 13 },
+  divider: { height: 1, backgroundColor: "#f0f0f0", marginVertical: 10 },
+  bold: { fontWeight: "bold", marginBottom: 5 },
+  itemText: { fontSize: 12, color: "#555" },
+  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 15 },
+  total: { fontWeight: "800", fontSize: 17, color: "#2e7d32" },
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  badgeText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+  mapBtn: { marginTop: 12, padding: 10, backgroundColor: "#f0eaff", borderRadius: 10, alignItems: "center" },
+  mapText: { color: "#6200ee", fontWeight: "bold", fontSize: 12 },
+  empty: { textAlign: "center", marginTop: 50, color: "#999" },
+  actions: { flexDirection: 'row' }
 });
+
+export default AdminOrdersScreen;

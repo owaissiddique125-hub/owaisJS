@@ -5,27 +5,33 @@ const supabase = require("../supabase/supbase");
 
 router.get("/", clerkAuth, async (req, res) => {
   try {
-    let { page = 1, limit = 15, year, month } = req.query;
+    // 1. Inputs parse karein
+    let { page = 1, limit = 15, year, month, day, mode = 'all' } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
 
-    // 1. Base Queries
-    // Main query: Saara data fetch karne ke liye (Paginated)
+    // Base Queries
     let query = supabase.from("orders").select("*", { count: "exact" });
     
-    // Revenue query: Sirf 'total' column mangwa rahe hain (Error fix karne ke liye)
+    // Revenue nikalne ke liye sirf 'total' column mangwa rahe hain taake aggregation error na aaye
     let revenueQuery = supabase.from("orders").select("total");
 
-    // 2. Filter Logic (Timezone safe dates)
-    if (year && year !== 'undefined' && year !== 'all') {
+    // 2. Date Filtering Logic (Specific Day Support ke sath)
+    if (mode !== 'all' && year && year !== 'undefined') {
       let startDate, endDate;
 
-      if (month && month !== 'undefined') {
-        // Specific Month Filter
+      if (mode === 'day' && month && day) {
+        // Ek specific din ki sales (Subah 12:00 AM se Raat 11:59 PM)
+        startDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0)).toISOString();
+        endDate = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999)).toISOString();
+      } 
+      else if (mode === 'month' && month) {
+        // Pure mahine ki sales
         startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0)).toISOString();
         endDate = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)).toISOString();
-      } else {
-        // Full Year Filter
+      } 
+      else {
+        // Pure saal ki sales
         startDate = new Date(Date.UTC(year, 0, 1, 0, 0, 0)).toISOString();
         endDate = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999)).toISOString();
       }
@@ -34,7 +40,7 @@ router.get("/", clerkAuth, async (req, res) => {
       revenueQuery = revenueQuery.gte("created_at", startDate).lte("created_at", endDate);
     }
 
-    // 3. Execution (Donon queries ko ek sath chalana)
+    // 3. Execution (Parallel fetching)
     const [ordersRes, allTotalsRes] = await Promise.all([
       query
         .order("created_at", { ascending: false })
@@ -42,22 +48,21 @@ router.get("/", clerkAuth, async (req, res) => {
       revenueQuery
     ]);
 
-    // Error check
+    // Error handling
     if (ordersRes.error) throw ordersRes.error;
     if (allTotalsRes.error) throw allTotalsRes.error;
 
-    // 4. Server-Side Revenue Calculation (Sabse Safe Tareeka)
-    // Ye line aapka "Aggregate function" wala error fix karegi
+    // 4. Manual Revenue Calculation (Safe & Accurate)
     const totalRevenue = allTotalsRes.data 
       ? allTotalsRes.data.reduce((sum, item) => sum + (Number(item.total) || 0), 0)
       : 0;
 
-    // 5. Final Response
+    // 5. Response bhejein
     res.json({
       success: true,
       orders: ordersRes.data || [],
       totalCount: ordersRes.count || 0,
-      totalRevenue: totalRevenue, 
+      totalRevenue: totalRevenue,
       currentPage: page
     });
 
@@ -65,7 +70,7 @@ router.get("/", clerkAuth, async (req, res) => {
     console.error("Sales Route Error:", err.message);
     res.status(500).json({ 
       success: false, 
-      message: "Server Error: Data fetch nahi ho saka",
+      message: "Server Error", 
       error: err.message 
     });
   }

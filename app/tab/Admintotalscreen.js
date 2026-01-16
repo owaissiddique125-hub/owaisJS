@@ -12,9 +12,10 @@ const API_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || "https://owa
 const AdminSalesScreen = () => {
   const { getToken } = useClerkAuth();
   
+  // --- States ---
   const [orders, setOrders] = useState([]);
   const [totalRevenue, setTotalRevenue] = useState(0); 
-  const [totalOrdersInDB, setTotalOrdersInDB] = useState(0); // Future-proof: Total count from DB
+  const [totalOrdersInDB, setTotalOrdersInDB] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -24,28 +25,24 @@ const AdminSalesScreen = () => {
   const [filterMode, setFilterMode] = useState('all'); 
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
+  // --- Fetch Function ---
   const fetchOrders = async (pageNumber, shouldRefresh = false) => {
     if (pageNumber === 1 && !refreshing) setLoading(true);
     if (pageNumber > 1) setLoadingMore(true);
 
     try {
       const token = await getToken();
-      const dateParts = selectedDate.split('-');
-      const year = dateParts[0];
-      const month = dateParts[1];
+      const [year, month, day] = selectedDate.split('-');
       
+      // Backend ko mode aur date parts dono bhej rahe hain
       let queryParams = { 
         page: pageNumber, 
-        limit: 15 
+        limit: 15,
+        mode: filterMode,
+        year, 
+        month, 
+        day 
       };
-
-      // Backend requirements ke mutabiq filters
-      if (filterMode === 'year') {
-        queryParams.year = year;
-      } else if (filterMode === 'month') {
-        queryParams.year = year;
-        queryParams.month = month;
-      }
 
       const response = await axios.get(`${API_URL}/api/orders`, {
         params: queryParams,
@@ -53,10 +50,9 @@ const AdminSalesScreen = () => {
       });
 
       if (response.data.success) {
-        // Stats update
         setTotalRevenue(Number(response.data.totalRevenue) || 0);
         setTotalOrdersInDB(Number(response.data.totalCount) || 0);
-
+        
         const newOrders = response.data.orders || [];
 
         if (shouldRefresh) {
@@ -69,8 +65,8 @@ const AdminSalesScreen = () => {
         setPage(pageNumber);
       }
     } catch (error) {
-      console.error("Sales Fetch Error:", error);
-      Alert.alert("Error", "Could not fetch sales data. Please try again.");
+      console.error("Fetch Error:", error);
+      Alert.alert("Error", "Sales data load nahi ho saka. Connection check karein.");
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -78,11 +74,10 @@ const AdminSalesScreen = () => {
     }
   };
 
-  // Filter change hone par sab refresh karein
+  // Jab bhi filter ya date badle, refresh karein
   useEffect(() => {
     setOrders([]); 
     setTotalRevenue(0);
-    setTotalOrdersInDB(0);
     setIsListEnd(false);
     fetchOrders(1, true);
   }, [filterMode, selectedDate]);
@@ -100,6 +95,7 @@ const AdminSalesScreen = () => {
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
+      {/* Revenue Card */}
       <Surface style={styles.mainStatsCard} elevation={4}>
         <View style={styles.revenueHeader}>
           <Text style={styles.revenueLabel}>Total Revenue</Text>
@@ -114,20 +110,20 @@ const AdminSalesScreen = () => {
         <View style={styles.divider} />
         <View style={styles.statsFooter}>
             <Text style={styles.filterInfo}>
-               {filterMode === 'all' ? "All-Time Records" : `Filter: ${selectedDate}`}
+               {filterMode === 'all' ? "All-Time" : `${filterMode.toUpperCase()}: ${selectedDate}`}
             </Text>
-            <Text style={styles.totalDbCount}>
-                Total: {totalOrdersInDB}
-            </Text>
+            <Text style={styles.totalDbCount}>Orders: {totalOrdersInDB}</Text>
         </View>
       </Surface>
 
+      {/* Filter Buttons */}
       <View style={styles.controlsSection}>
         <SegmentedButtons
           value={filterMode}
           onValueChange={setFilterMode}
           buttons={[
             { value: 'all', label: 'All', icon: 'infinity' },
+            { value: 'day', label: 'Day', icon: 'calendar-today' },
             { value: 'month', label: 'Month', icon: 'calendar-month' },
             { value: 'year', label: 'Year', icon: 'calendar-range' },
           ]}
@@ -142,7 +138,7 @@ const AdminSalesScreen = () => {
             icon="calendar-edit"
             style={styles.calendarBtn}
           >
-            {showCalendar ? "Hide Calendar" : "Pick Date"}
+            {showCalendar ? "Close Calendar" : "Pick Date"}
           </Button>
         )}
       </View>
@@ -167,7 +163,7 @@ const AdminSalesScreen = () => {
       
       <View style={styles.listHeaderRow}>
         <Text style={styles.listTitle}>Transactions</Text>
-        <Text style={styles.orderCount}>Showing {orders.length} of {totalOrdersInDB}</Text>
+        <Text style={styles.orderCount}>Total {totalOrdersInDB} orders found</Text>
       </View>
     </View>
   );
@@ -177,7 +173,7 @@ const AdminSalesScreen = () => {
       {loading && orders.length === 0 ? (
         <View style={styles.center}>
             <ActivityIndicator size="large" color="#6200ee" />
-            <Text style={{marginTop: 10, color: '#666'}}>Fetching Sales Data...</Text>
+            <Text style={{marginTop: 10, color: '#666'}}>Syncing Data...</Text>
         </View>
       ) : (
         <FlatList
@@ -195,21 +191,14 @@ const AdminSalesScreen = () => {
               <List.Item
                 title={`${item.first_name || 'Customer'} ${item.last_name || ''}`}
                 titleStyle={styles.orderTitle}
-                description={`Order #${item.id.toString().slice(-6).toUpperCase()} • ${item.status || 'Paid'}`}
+                description={`ID: #${item.id.toString().slice(-6).toUpperCase()}`}
                 descriptionStyle={styles.orderDesc}
                 left={() => (
-                    <Avatar.Icon 
-                        size={44} 
-                        icon="cash-check" 
-                        backgroundColor="#f0eaff" 
-                        color="#6200ee" 
-                    />
+                    <Avatar.Icon size={44} icon="cart-check" backgroundColor="#f0eaff" color="#6200ee" />
                 )}
                 right={() => (
                   <View style={styles.priceContainer}>
-                    <Text style={styles.priceText}>
-                      Rs {Number(item.total || 0).toLocaleString()}
-                    </Text>
+                    <Text style={styles.priceText}>Rs {Number(item.total || 0).toLocaleString()}</Text>
                     <Text style={styles.dateText}>
                         {new Date(item.created_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
                     </Text>
@@ -220,14 +209,9 @@ const AdminSalesScreen = () => {
           )}
           ListFooterComponent={() => (
             loadingMore ? <ActivityIndicator style={{ margin: 20 }} color="#6200ee" /> : 
-            (isListEnd && orders.length > 0 ? <Text style={styles.endText}>All transactions loaded</Text> : null)
+            (isListEnd && orders.length > 0 ? <Text style={styles.endText}>End of results</Text> : null)
           )}
-          ListEmptyComponent={!loading && (
-            <View style={styles.center}>
-                <Avatar.Icon size={80} icon="database-off" backgroundColor="transparent" color="#ccc" />
-                <Text style={styles.noData}>No orders found for this period.</Text>
-            </View>
-          )}
+          ListEmptyComponent={!loading && <Text style={styles.noData}>Is period mein koi orders nahi hain.</Text>}
         />
       )}
     </SafeAreaView>
@@ -236,35 +220,35 @@ const AdminSalesScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fdfbff" },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { paddingBottom: 40 },
   headerContainer: { padding: 16 },
   mainStatsCard: { padding: 24, backgroundColor: '#6200ee', borderRadius: 24, marginBottom: 20 },
   revenueHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  revenueLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '600' },
-  revenueAmount: { color: '#fff', fontSize: 36, fontWeight: '800', marginVertical: 12 },
+  revenueLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' },
+  revenueAmount: { color: '#fff', fontSize: 34, fontWeight: '800', marginVertical: 10 },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 10 },
   statsFooter: { flexDirection: 'row', justifyContent: 'space-between' },
-  filterInfo: { color: '#fff', fontSize: 12, opacity: 0.9 },
-  totalDbCount: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
-  liveIndicator: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  pulseDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ade80', marginRight: 6 },
-  liveText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  controlsSection: { marginBottom: 16 },
-  segment: { marginBottom: 12, backgroundColor: '#fff' },
-  calendarBtn: { borderRadius: 12 },
-  calendarCard: { marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
-  listHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingHorizontal: 4 },
-  listTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
-  orderCount: { fontSize: 12, color: '#666', fontWeight: '600' },
-  orderItem: { marginHorizontal: 16, marginBottom: 12, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#f0f0f0' },
-  orderTitle: { fontWeight: '700', fontSize: 16, color: '#1a1a1a' },
-  orderDesc: { color: '#777', fontSize: 13, marginTop: 2 },
+  filterInfo: { color: '#fff', fontSize: 11, opacity: 0.9 },
+  totalDbCount: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  liveIndicator: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+  pulseDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ade80', marginRight: 5 },
+  liveText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
+  controlsSection: { marginBottom: 15 },
+  segment: { marginBottom: 10, backgroundColor: '#fff' },
+  calendarBtn: { borderRadius: 10 },
+  calendarCard: { marginBottom: 15, borderRadius: 15, overflow: 'hidden' },
+  listHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, paddingHorizontal: 5 },
+  listTitle: { fontSize: 17, fontWeight: '700' },
+  orderCount: { fontSize: 11, color: '#666' },
+  orderItem: { marginHorizontal: 16, marginBottom: 10, backgroundColor: '#fff', borderRadius: 14, borderWidth: 1, borderColor: '#f3f3f3' },
+  orderTitle: { fontWeight: '700', fontSize: 15 },
+  orderDesc: { color: '#888', fontSize: 12 },
   priceContainer: { justifyContent: 'center', alignItems: 'flex-end' },
-  priceText: { fontWeight: '800', color: '#2e7d32', fontSize: 16 },
-  dateText: { color: '#999', fontSize: 11, marginTop: 4 },
-  noData: { textAlign: 'center', marginTop: 10, color: '#999', fontSize: 14 },
-  endText: { textAlign: 'center', color: '#bbb', marginVertical: 30, fontSize: 13, fontWeight: '500' },
+  priceText: { fontWeight: '800', color: '#2e7d32', fontSize: 15 },
+  dateText: { color: '#aaa', fontSize: 10, marginTop: 2 },
+  noData: { textAlign: 'center', marginTop: 50, color: '#999' },
+  endText: { textAlign: 'center', color: '#ccc', marginVertical: 20, fontSize: 12 },
 });
 
 export default AdminSalesScreen;

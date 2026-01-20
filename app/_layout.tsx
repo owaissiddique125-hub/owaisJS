@@ -1,23 +1,34 @@
 import { ClerkProvider } from "@clerk/clerk-expo";
-import { Stack } from "expo-router";
+import Constants from "expo-constants";
+import * as Device from "expo-device";
+import * as Notifications from "expo-notifications";
+import { Stack, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import supabase from "../supabase/supbase";
 
-// Token cache for Clerk with proper cleanup
+// 1. Notification Settings (App khuli ho tab bhi dikhayega)
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+// Clerk Token Cache
 const secureTokenCache = {
   async getToken(key: string) {
     try {
-      const token = await SecureStore.getItemAsync(key);
-      console.log(`🔍 Getting token for key: ${key}, found: ${!!token}`);
-      return token;
+      return await SecureStore.getItemAsync(key);
     } catch (err) {
-      console.error(`Error getting token for ${key}:`, err);
       return null;
     }
   },
   async saveToken(key: string, value: string) {
     try {
-      console.log(`💾 Saving token for key: ${key}`);
       await SecureStore.setItemAsync(key, value);
     } catch (err) {
       console.error("Error saving token:", err);
@@ -25,27 +36,75 @@ const secureTokenCache = {
   },
   async deleteToken(key: string) {
     try {
-      console.log(`🗑️ Deleting token for key: ${key}`);
       await SecureStore.deleteItemAsync(key);
     } catch (err) {
-      console.error(`Error deleting token for ${key}:`, err);
+      console.error("Error deleting token:", err);
     }
   },
 };
 
 export default function RootLayout() {
-  const clerkPublishableKey =
-    process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-    "pk_live_Y2xlcmsub3dhaXMuZnVuJA";
+  const router = useRouter();
+  const clerkPublishableKey = "pk_live_Y2xlcmsub3dhaXMuZnVuJA";
 
-  console.log("🔑 Clerk Publishable Key:", clerkPublishableKey);
-  console.log("🔑 Clerk Key length:", clerkPublishableKey?.length);
+  useEffect(() => {
+    // 2. Token setup aur Supabase mein save karne ka function
+    async function setupAdminNotifications() {
+      if (!Device.isDevice) {
+        console.log("Simulator detected. Push notifications won't work.");
+        return;
+      }
 
-  if (!clerkPublishableKey) {
-    console.warn(
-      "Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Make sure it's set in your .env file or environment variables.",
-    );
-  }
+      // Permissions mangna
+      const { status: existingStatus } =
+        await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== "granted") {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== "granted") {
+        console.log("Notification permission denied!");
+        return;
+      }
+
+      // Token nikalna
+      try {
+        const projectId =
+          Constants?.expoConfig?.extra?.eas?.projectId ||
+          Constants?.easConfig?.projectId;
+        const token = (await Notifications.getExpoPushTokenAsync({ projectId }))
+          .data;
+        console.log("🚀 Admin Expo Token:", token);
+
+        // Supabase mein save karna (Upsert ka matlab hai update ya insert)
+        const { error } = await supabase
+          .from("admin_config")
+          .upsert({ id: 1, expo_token: token, updated_at: new Date() });
+
+        if (error) console.error("❌ DB Save Error:", error.message);
+        else console.log("✅ Token successfully saved to Supabase!");
+      } catch (error) {
+        console.error("❌ Error getting token:", error);
+      }
+    }
+
+    setupAdminNotifications();
+
+    // 3. Listener: Jab notification par CLICK karein
+    const responseListener =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log("Notification clicked, redirecting...");
+        router.push("/tab/adminpannel"); // Path verify kar lena
+      });
+
+    return () => {
+      if (responseListener) {
+        responseListener.remove();
+      }
+    };
+  }, []);
 
   return (
     <SafeAreaProvider>

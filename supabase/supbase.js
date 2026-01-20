@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js"; // require ki jagah import
+const { createClient } = require("@supabase/supabase-js"); // require ki jagah import
 
 const SUPABASE_URL = "https://iykoqwuljgcyhskonlic.supabase.co";
 const SUPABASE_SERVICE_KEY =
@@ -9,7 +9,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 }
 
 // Client banaya
-export const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 // Sirf ye aik line kafi hai export ke liye
-export default supabase;
+module.exports = supabase;

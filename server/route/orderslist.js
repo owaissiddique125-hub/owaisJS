@@ -88,4 +88,23 @@ router.get("/", clerkAuth, async (req, res) => {
   }
 });
 
+router.patch("/:id", clerkAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const { data, error } = await supabase
+      .from("orders")
+      .update({ status: status })
+      .eq("id", id)
+      .select();
+
+    if (error) throw error;
+
+    res.json({ success: true, message: "Updated", order: data[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

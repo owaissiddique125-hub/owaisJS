@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const clerkAuth = require("../middleware/clerkAuth");
 const supabase = require("../supabase/supbase");
+const axios = require("axios");
 
 router.get("/", clerkAuth, async (req, res) => {
   try {
@@ -87,21 +88,44 @@ router.get("/", clerkAuth, async (req, res) => {
     });
   }
 });
-
 router.patch("/:id", clerkAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    const { data, error } = await supabase
+    // 1. Order aur Customer ka Token nikalein (Maan lijiye token 'orders' table mein hi hai ya join hai)
+    // Agar token user table mein hai toh pehle order fetch karke user_id nikalni hogi
+    const { data: orderData, error: fetchError } = await supabase
+      .from("orders")
+      .select("*, customer_token") // Maan lein 'customer_token' column ka naam hai
+      .eq("id", id)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // 2. Status Update karein
+    const { error: updateError } = await supabase
       .from("orders")
       .update({ status: status })
-      .eq("id", id)
-      .select();
+      .eq("id", id);
 
-    if (error) throw error;
+    if (updateError) throw updateError;
 
-    res.json({ success: true, message: "Updated", order: data[0] });
+    // 3. Notification Bhejein (Agar token maujood hai)
+    if (orderData.customer_token) {
+      try {
+        await axios.post("https://exp.host/--/api/v2/push/send", {
+          to: orderData.customer_token,
+          title: "Order Update! 🛒",
+          body: `Your Order Has Been '${status}' `,
+          data: { orderId: id },
+        });
+      } catch (pusherror) {
+        console.log("The error is cooming ", pusherror);
+      }
+    }
+
+    res.json({ success: true, message: "Updated and Notified" });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

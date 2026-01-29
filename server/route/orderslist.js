@@ -4,6 +4,51 @@ const clerkAuth = require("../middleware/clerkAuth");
 const supabase = require("../supabase/supbase");
 const axios = require("axios");
 
+const admin = require("firebase-admin");
+const serviceAccount = require("../firebase-key.json"); // Path sahi rakhna
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
+
+// --- 2. NEW ORDER ROUTE (Jo tum dhoond rahe ho) ---
+router.post("/", clerkAuth, async (req, res) => {
+  try {
+    // Order save karne ka logic
+    const { data: newOrder, error } = await supabase
+      .from("orders")
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // --- ADMIN KO NOTIFICATION BHEJNA ---
+    const { data: adminConfig } = await supabase
+      .from("admin_config")
+      .select("fcm_token")
+      .eq("id", 1)
+      .single();
+
+    if (adminConfig?.fcm_token) {
+      await admin.messaging().send({
+        notification: {
+          title: "Naya Order Aa Gaya! 🛍️",
+          body: `${req.body.first_name || "Customer"} ne Rs.${req.body.total} ka order diya hai.`,
+        },
+        token: adminConfig.fcm_token,
+      });
+      console.log("Admin Notified via Firebase!");
+    }
+
+    res.json({ success: true, order: newOrder });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get("/", clerkAuth, async (req, res) => {
   try {
     // 1. Inputs parse karein
@@ -110,6 +155,7 @@ router.patch("/:id", clerkAuth, async (req, res) => {
       .eq("id", id);
 
     if (updateError) throw updateError;
+    console.log("The Coustumer Token ", orderData?.customer_token);
 
     // 3. Notification Bhejein (Agar token maujood hai)
     if (orderData.customer_token) {
